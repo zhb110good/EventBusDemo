@@ -256,6 +256,7 @@ public class EventBus {
     public void post(Object event) {
         PostingThreadState postingState = currentPostingThreadState.get();
         List<Object> eventQueue = postingState.eventQueue;
+		 //将事件放入队列
         eventQueue.add(event);
 
         if (!postingState.isPosting) {
@@ -266,6 +267,7 @@ public class EventBus {
             }
             try {
                 while (!eventQueue.isEmpty()) {
+					//分发事件
                     postSingleEvent(eventQueue.remove(0), postingState);
                 }
             } finally {
@@ -382,15 +384,19 @@ public class EventBus {
         Class<?> eventClass = event.getClass();
         boolean subscriptionFound = false;
         if (eventInheritance) {
+			//找到eventClass对应的事件，包含父类对应的事件和接口对应的事件
             List<Class<?>> eventTypes = lookupAllEventTypes(eventClass);
             int countTypes = eventTypes.size();
             for (int h = 0; h < countTypes; h++) {
+				//找到订阅事件对应的订阅
                 Class<?> clazz = eventTypes.get(h);
+				//对每个订阅调用该方法
                 subscriptionFound |= postSingleEventForEventType(event, postingState, clazz);
             }
         } else {
             subscriptionFound = postSingleEventForEventType(event, postingState, eventClass);
         }
+		//如果没有订阅发现，那么会Post一个NoSubscriberEvent事件
         if (!subscriptionFound) {
             if (logNoSubscriberMessages) {
                 Log.d(TAG, "No subscribers registered for event " + eventClass);
@@ -413,6 +419,7 @@ public class EventBus {
                 postingState.subscription = subscription;
                 boolean aborted = false;
                 try {
+					//核心方法 
                     postToSubscription(subscription, event, postingState.isMainThread);
                     aborted = postingState.canceled;
                 } finally {
@@ -429,26 +436,27 @@ public class EventBus {
         return false;
     }
 
+    //第一个参数就是传入的订阅，第二个参数就是对于的分发事件，第三个参数是否在主线程
     private void postToSubscription(Subscription subscription, Object event, boolean isMainThread) {
         switch (subscription.subscriberMethod.threadMode) {
-            case PostThread:
+            case PostThread: //直接在本线程中调用订阅函数
                 invokeSubscriber(subscription, event);
                 break;
             case MainThread:
-                if (isMainThread) {
+                if (isMainThread) { //如果直接在主线程，那么直接在本现场中调用订阅函数
                     invokeSubscriber(subscription, event);
-                } else {
+                } else { //如果不在主线程，那么通过handler实现在主线程中执行
                     mainThreadPoster.enqueue(subscription, event);
                 }
                 break;
             case BackgroundThread:
-                if (isMainThread) {
+                if (isMainThread) { /如果主线程，创建一个runnable丢入线程池中
                     backgroundPoster.enqueue(subscription, event);
-                } else {
+                } else { //如果子线程，则直接调用
                     invokeSubscriber(subscription, event);
                 }
                 break;
-            case Async:
+            case Async://不论什么线程，直接丢入线程池
                 asyncPoster.enqueue(subscription, event);
                 break;
             default:
